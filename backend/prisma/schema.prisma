@@ -1,0 +1,742 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS & AUTH ────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole
+  phone         String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Driver-specific
+  driver        Driver?
+  sessions      Session[]
+  syncLogs      SyncLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  DRIVER
+  DISPATCHER
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+}
+
+model Driver {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  licenseNumber   String?
+  vehicleId       String?
+  currentRouteId  String?
+  clockedInAt     DateTime?
+  clockedOutAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id])
+  routes          Route[]
+  truckInventory  TruckInventory[]
+  invoices        Invoice[]
+  deliveryLogs    DeliveryLog[]
+  performanceMetrics DriverPerformance[]
+
+  @@map("drivers")
+}
+
+// ─── CUSTOMERS ───────────────────────────────────────────────────
+
+model Customer {
+  id              String    @id @default(uuid())
+  qboCustomerId   String?   @unique  // QuickBooks Online ID
+  name            String
+  contactName     String?
+  email           String?
+  phone           String?
+  accountNumber   String?   @unique
+  taxExempt       Boolean   @default(false)
+  taxId           String?
+  creditLimit     Decimal?  @db.Decimal(12,2)
+  paymentTerms    String    @default("NET30")
+  notes           String?
+  isActive        Boolean   @default(true)
+  chainId         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  chain           Chain?    @relation(fields: [chainId], references: [id])
+  locations       CustomerLocation[]
+  priceLevels     CustomerPriceLevel[]
+  invoices        Invoice[]
+  credits         CreditMemo[]
+  orderHistory    OrderHistory[]
+  customerInsights CustomerInsight?
+
+  @@map("customers")
+}
+
+model Chain {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  code      String     @unique
+  dexSupported Boolean  @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  customers Customer[]
+  chainPriceLevels ChainPriceLevel[]
+  chainPromotions  Promotion[]
+
+  @@map("chains")
+}
+
+model CustomerLocation {
+  id            String    @id @default(uuid())
+  customerId    String
+  name          String
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  state         String
+  zip           String
+  latitude      Decimal?  @db.Decimal(10,7)
+  longitude     Decimal?  @db.Decimal(10,7)
+  deliveryNotes String?
+  receivingHoursStart String?  // "06:00"
+  receivingHoursEnd   String?  // "14:00"
+  dexLocationCode     String?  // DEX retailer location code
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  routeStops    RouteStop[]
+  invoices      Invoice[]
+  deliveryLogs  DeliveryLog[]
+
+  @@map("customer_locations")
+}
+
+// ─── PRODUCTS & PRICING ──────────────────────────────────────────
+
+model Product {
+  id            String    @id @default(uuid())
+  qboItemId     String?   @unique  // QuickBooks Online ID
+  sku           String    @unique
+  upc           String?   @unique
+  name          String
+  description   String?
+  categoryId    String?
+  unitOfMeasure String    @default("EACH")  // EACH, CASE, PALLET, LB
+  unitsPerCase  Int       @default(1)
+  weight        Decimal?  @db.Decimal(10,3)
+  basePrice     Decimal   @db.Decimal(12,4)
+  costPrice     Decimal   @db.Decimal(12,4)
+  taxable       Boolean   @default(true)
+  perishable    Boolean   @default(false)
+  lotTracked    Boolean   @default(false)
+  imageUrl      String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  category      Category?  @relation(fields: [categoryId], references: [id])
+  priceLevels   PriceLevel[]
+  customerPriceLevels CustomerPriceLevel[]
+  chainPriceLevels ChainPriceLevel[]
+  promotionItems PromotionItem[]
+  invoiceLines  InvoiceLine[]
+  creditLines   CreditLine[]
+  truckInventory TruckInventory[]
+  warehouseInventory WarehouseInventory[]
+  orderHistoryLines OrderHistoryLine[]
+
+  @@map("products")
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  products  Product[]
+
+  @@map("categories")
+}
+
+model PriceLevel {
+  id          String    @id @default(uuid())
+  productId   String
+  levelName   String    // "Retail", "Wholesale", "Chain-A", etc.
+  levelCode   String
+  price       Decimal   @db.Decimal(12,4)
+  minQuantity Int       @default(1)
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([productId, levelCode, effectiveFrom])
+  @@map("price_levels")
+}
+
+model CustomerPriceLevel {
+  id          String    @id @default(uuid())
+  customerId  String
+  productId   String
+  price       Decimal   @db.Decimal(12,4)
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([customerId, productId, effectiveFrom])
+  @@map("customer_price_levels")
+}
+
+model ChainPriceLevel {
+  id          String    @id @default(uuid())
+  chainId     String
+  productId   String
+  price       Decimal   @db.Decimal(12,4)
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  chain       Chain     @relation(fields: [chainId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([chainId, productId, effectiveFrom])
+  @@map("chain_price_levels")
+}
+
+// ─── PROMOTIONS ──────────────────────────────────────────────────
+
+model Promotion {
+  id            String         @id @default(uuid())
+  name          String
+  type          PromotionType
+  chainId       String?
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean        @default(true)
+  description   String?
+  // BOGO fields
+  buyQuantity   Int?
+  getQuantity   Int?
+  // Discount fields
+  discountType  DiscountType?
+  discountValue Decimal?       @db.Decimal(12,4)
+  minOrderAmount Decimal?      @db.Decimal(12,2)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  chain         Chain?         @relation(fields: [chainId], references: [id])
+  items         PromotionItem[]
+
+  @@map("promotions")
+}
+
+enum PromotionType {
+  BOGO
+  PERCENTAGE_OFF
+  FIXED_AMOUNT_OFF
+  MIX_AND_MATCH
+  TEMPORARY_PRICE_REDUCTION
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model PromotionItem {
+  id          String    @id @default(uuid())
+  promotionId String
+  productId   String
+  isBuyItem   Boolean   @default(true)  // For BOGO: true=buy item, false=free item
+  createdAt   DateTime  @default(now())
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([promotionId, productId])
+  @@map("promotion_items")
+}
+
+// ─── INVOICES ────────────────────────────────────────────────────
+
+model Invoice {
+  id              String        @id @default(uuid())
+  invoiceNumber   String        @unique
+  customerId      String
+  locationId      String?
+  driverId        String
+  routeId         String?
+  status          InvoiceStatus @default(DRAFT)
+  subtotal        Decimal       @db.Decimal(12,2)
+  taxAmount       Decimal       @db.Decimal(12,2) @default(0)
+  totalAmount     Decimal       @db.Decimal(12,2)
+  amountPaid      Decimal       @db.Decimal(12,2) @default(0)
+  balanceDue      Decimal       @db.Decimal(12,2)
+  notes           String?
+  signatureData   String?       // Base64 signature image
+  signedByName    String?
+  deliveredAt     DateTime?
+  dexTransmitted  Boolean       @default(false)
+  dexTransmittedAt DateTime?
+  qboInvoiceId    String?       // QuickBooks Online invoice ID
+  qboSyncStatus   QBOSyncStatus @default(PENDING)
+  qboSyncError    String?
+  qboSyncedAt     DateTime?
+  // Offline sync fields
+  deviceId        String?
+  localId         String?       // Local ID from device for dedup
+  syncedAt        DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  location        CustomerLocation? @relation(fields: [locationId], references: [id])
+  driver          Driver        @relation(fields: [driverId], references: [id])
+  route           Route?        @relation(fields: [routeId], references: [id])
+  lines           InvoiceLine[]
+  payments        Payment[]
+
+  @@index([customerId, createdAt])
+  @@index([driverId, createdAt])
+  @@index([qboSyncStatus])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  COMPLETED
+  DELIVERED
+  REFUSED
+  PARTIALLY_REFUSED
+  VOIDED
+}
+
+enum QBOSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  ERROR
+  NOT_APPLICABLE
+}
+
+model InvoiceLine {
+  id            String    @id @default(uuid())
+  invoiceId     String
+  productId     String
+  quantity      Decimal   @db.Decimal(10,3)
+  unitPrice     Decimal   @db.Decimal(12,4)
+  discount      Decimal   @db.Decimal(12,4) @default(0)
+  lineTotal     Decimal   @db.Decimal(12,2)
+  taxAmount     Decimal   @db.Decimal(12,2) @default(0)
+  lotNumber     String?
+  expirationDate DateTime?
+  refused       Boolean   @default(false)
+  refusedReason String?
+  promotionId   String?
+  createdAt     DateTime  @default(now())
+
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@map("invoice_lines")
+}
+
+// ─── PAYMENTS ────────────────────────────────────────────────────
+
+model Payment {
+  id            String        @id @default(uuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(12,2)
+  method        PaymentMethod
+  checkNumber   String?
+  reference     String?
+  collectedAt   DateTime      @default(now())
+  qboPaymentId  String?
+  qboSyncStatus QBOSyncStatus @default(PENDING)
+  deviceId      String?
+  localId       String?
+  createdAt     DateTime      @default(now())
+
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  ON_ACCOUNT
+}
+
+// ─── CREDITS & RETURNS ──────────────────────────────────────────
+
+model CreditMemo {
+  id              String          @id @default(uuid())
+  creditNumber    String          @unique
+  customerId      String
+  driverId        String?
+  reason          CreditReason
+  status          CreditStatus    @default(PENDING)
+  totalAmount     Decimal         @db.Decimal(12,2)
+  notes           String?
+  signatureData   String?
+  qboCreditId     String?
+  qboSyncStatus   QBOSyncStatus   @default(PENDING)
+  deviceId        String?
+  localId         String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  customer        Customer        @relation(fields: [customerId], references: [id])
+  lines           CreditLine[]
+
+  @@index([customerId, createdAt])
+  @@map("credit_memos")
+}
+
+enum CreditReason {
+  DAMAGED_IN_TRANSIT
+  EXPIRED_PRODUCT
+  WRONG_PRODUCT
+  CUSTOMER_RETURN
+  PRICING_ERROR
+  QUALITY_ISSUE
+  OTHER
+}
+
+enum CreditStatus {
+  PENDING
+  APPROVED
+  APPLIED
+  VOIDED
+}
+
+model CreditLine {
+  id          String    @id @default(uuid())
+  creditMemoId String
+  productId   String
+  quantity    Decimal   @db.Decimal(10,3)
+  unitPrice   Decimal   @db.Decimal(12,4)
+  lineTotal   Decimal   @db.Decimal(12,2)
+  condition   ReturnCondition @default(RESALABLE)
+  lotNumber   String?
+  createdAt   DateTime  @default(now())
+
+  creditMemo  CreditMemo @relation(fields: [creditMemoId], references: [id], onDelete: Cascade)
+  product     Product    @relation(fields: [productId], references: [id])
+
+  @@map("credit_lines")
+}
+
+enum ReturnCondition {
+  RESALABLE
+  DAMAGED
+  EXPIRED
+  DISPOSAL
+}
+
+// ─── INVENTORY ───────────────────────────────────────────────────
+
+model WarehouseInventory {
+  id          String    @id @default(uuid())
+  productId   String
+  quantity    Decimal   @db.Decimal(10,3)
+  lotNumber   String?
+  expirationDate DateTime?
+  binLocation String?
+  updatedAt   DateTime  @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([productId, lotNumber])
+  @@map("warehouse_inventory")
+}
+
+model TruckInventory {
+  id            String    @id @default(uuid())
+  driverId      String
+  productId     String
+  quantityLoaded Decimal  @db.Decimal(10,3)
+  quantityCurrent Decimal @db.Decimal(10,3)
+  quantitySold  Decimal   @db.Decimal(10,3) @default(0)
+  quantityReturned Decimal @db.Decimal(10,3) @default(0)
+  lotNumber     String?
+  expirationDate DateTime?
+  loadedAt      DateTime  @default(now())
+  routeDate     DateTime  @default(now()) @db.Date
+  updatedAt     DateTime  @updatedAt
+
+  driver        Driver    @relation(fields: [driverId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@unique([driverId, productId, routeDate, lotNumber])
+  @@index([driverId, routeDate])
+  @@map("truck_inventory")
+}
+
+// ─── ROUTES ──────────────────────────────────────────────────────
+
+model Route {
+  id          String      @id @default(uuid())
+  name        String
+  driverId    String
+  routeDate   DateTime    @db.Date
+  status      RouteStatus @default(PLANNED)
+  startedAt   DateTime?
+  completedAt DateTime?
+  totalStops  Int         @default(0)
+  completedStops Int      @default(0)
+  totalMiles  Decimal?    @db.Decimal(8,2)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  driver      Driver      @relation(fields: [driverId], references: [id])
+  stops       RouteStop[]
+  invoices    Invoice[]
+
+  @@unique([driverId, routeDate, name])
+  @@map("routes")
+}
+
+enum RouteStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model RouteStop {
+  id            String        @id @default(uuid())
+  routeId       String
+  locationId    String
+  stopOrder     Int
+  status        StopStatus    @default(PENDING)
+  plannedArrival DateTime?
+  actualArrival  DateTime?
+  departedAt    DateTime?
+  noServiceReason String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  route         Route         @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  location      CustomerLocation @relation(fields: [locationId], references: [id])
+
+  @@unique([routeId, stopOrder])
+  @@map("route_stops")
+}
+
+enum StopStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  NO_SERVICE
+}
+
+// ─── DELIVERY LOGS ───────────────────────────────────────────────
+
+model DeliveryLog {
+  id          String    @id @default(uuid())
+  driverId    String
+  locationId  String
+  action      String    // ARRIVED, DEPARTED, INVOICE_CREATED, PAYMENT_COLLECTED, etc.
+  metadata    Json?     // Flexible data per action type
+  latitude    Decimal?  @db.Decimal(10,7)
+  longitude   Decimal?  @db.Decimal(10,7)
+  deviceId    String?
+  createdAt   DateTime  @default(now())
+
+  driver      Driver    @relation(fields: [driverId], references: [id])
+  location    CustomerLocation @relation(fields: [locationId], references: [id])
+
+  @@index([driverId, createdAt])
+  @@map("delivery_logs")
+}
+
+// ─── ORDER HISTORY (for analytics) ──────────────────────────────
+
+model OrderHistory {
+  id          String    @id @default(uuid())
+  customerId  String
+  orderDate   DateTime  @db.Date
+  totalAmount Decimal   @db.Decimal(12,2)
+  itemCount   Int
+  source      String    @default("INVOICE") // INVOICE, B2B_APP, WEB_STORE
+  createdAt   DateTime  @default(now())
+
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  lines       OrderHistoryLine[]
+
+  @@index([customerId, orderDate])
+  @@map("order_history")
+}
+
+model OrderHistoryLine {
+  id            String    @id @default(uuid())
+  orderHistoryId String
+  productId     String
+  quantity      Decimal   @db.Decimal(10,3)
+  unitPrice     Decimal   @db.Decimal(12,4)
+  lineTotal     Decimal   @db.Decimal(12,2)
+
+  orderHistory  OrderHistory @relation(fields: [orderHistoryId], references: [id], onDelete: Cascade)
+  product       Product      @relation(fields: [productId], references: [id])
+
+  @@map("order_history_lines")
+}
+
+// ─── CUSTOMER INSIGHTS (computed analytics) ─────────────────────
+
+model CustomerInsight {
+  id                    String    @id @default(uuid())
+  customerId            String    @unique
+  avgOrderValue         Decimal?  @db.Decimal(12,2)
+  avgOrderFrequencyDays Decimal?  @db.Decimal(6,1)
+  lastOrderDate         DateTime?
+  totalLifetimeValue    Decimal?  @db.Decimal(14,2)
+  orderCount            Int       @default(0)
+  topProducts           Json?     // [{productId, name, qty, revenue}]
+  preferredDeliveryDay  String?   // "MONDAY", "TUESDAY", etc.
+  preferredDeliveryTime String?   // "MORNING", "AFTERNOON"
+  churnRisk             Decimal?  @db.Decimal(5,4)  // 0.0000 - 1.0000
+  suggestedProducts     Json?     // [{productId, name, reason, confidence}]
+  seasonalPatterns      Json?     // {month: avgOrderValue}
+  updatedAt             DateTime  @updatedAt
+
+  customer              Customer  @relation(fields: [customerId], references: [id])
+
+  @@map("customer_insights")
+}
+
+// ─── DRIVER PERFORMANCE ─────────────────────────────────────────
+
+model DriverPerformance {
+  id                String    @id @default(uuid())
+  driverId          String
+  date              DateTime  @db.Date
+  stopsCompleted    Int       @default(0)
+  stopsSkipped      Int       @default(0)
+  totalRevenue      Decimal   @db.Decimal(12,2) @default(0)
+  totalCollected    Decimal   @db.Decimal(12,2) @default(0)
+  invoiceCount      Int       @default(0)
+  creditCount       Int       @default(0)
+  avgTimePerStop    Decimal?  @db.Decimal(6,2)  // minutes
+  totalMiles        Decimal?  @db.Decimal(8,2)
+  onTimeDeliveries  Int       @default(0)
+  customerRating    Decimal?  @db.Decimal(3,2)
+  createdAt         DateTime  @default(now())
+
+  driver            Driver    @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, date])
+  @@map("driver_performance")
+}
+
+// ─── SYNC & INTEGRATION ─────────────────────────────────────────
+
+model SyncLog {
+  id          String        @id @default(uuid())
+  userId      String?
+  deviceId    String?
+  direction   SyncDirection
+  entityType  String        // "invoice", "payment", "credit", etc.
+  entityId    String
+  status      SyncStatus
+  errorMessage String?
+  payload     Json?
+  createdAt   DateTime      @default(now())
+
+  user        User?         @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([status, createdAt])
+  @@map("sync_logs")
+}
+
+enum SyncDirection {
+  DEVICE_TO_SERVER
+  SERVER_TO_QBO
+  QBO_TO_SERVER
+}
+
+enum SyncStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+  CONFLICT
+}
+
+model QBOToken {
+  id            String    @id @default(uuid())
+  realmId       String    @unique
+  accessToken   String
+  refreshToken  String
+  tokenType     String    @default("bearer")
+  expiresAt     DateTime
+  refreshExpiresAt DateTime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("qbo_tokens")
+}
+
+// ─── DEX TRANSACTIONS ────────────────────────────────────────────
+
+model DEXTransaction {
+  id              String    @id @default(uuid())
+  invoiceId       String
+  retailerCode    String
+  locationCode    String
+  transmissionData String   // Raw DEX data
+  status          String    @default("PENDING") // PENDING, TRANSMITTED, ACKNOWLEDGED, ERROR
+  transmittedAt   DateTime?
+  acknowledgedAt  DateTime?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+
+  @@index([invoiceId])
+  @@map("dex_transactions")
+}

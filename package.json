@@ -1,0 +1,19 @@
+{
+  "name": "olmos-dsd",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Olmos DSD - Direct Store Delivery Route Accounting System",
+  "workspaces": [
+    "backend",
+    "dashboard"
+  ],
+  "scripts": {
+    "backend:dev": "npm run dev --workspace=backend",
+    "dashboard:dev": "npm run dev --workspace=dashboard",
+    "backend:build": "npm run build --workspace=backend",
+    "dashboard:build": "npm run build --workspace=dashboard",
+    "db:migrate": "npm run db:migrate --workspace=backend",
+    "db:seed": "npm run db:seed --workspace=backend",
+    "db:studio": "npm run db:studio --workspace=backend"
+  }
+}

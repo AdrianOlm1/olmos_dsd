@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Olmos DSD Driver",
+    "slug": "olmos-dsd-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.olmosdsd.driver",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used for barcode scanning",
+        "NSLocationWhenInUseUsageDescription": "Used for delivery tracking"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.olmosdsd.driver",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      "expo-asset",
+      "expo-font"
+    ],
+    "newArchEnabled": false
+  }
+}
