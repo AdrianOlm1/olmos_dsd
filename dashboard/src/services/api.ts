@@ -95,4 +95,36 @@ export const api = {
   getQBOStatus: () => request<any>('/qbo/status'),
   getQBOSyncStatus: () => request<any>('/qbo/sync-status'),
   connectQBO: () => request<{ authUri: string }>('/qbo/connect'),
+
+  // Auto-Dispatch
+  getDispatchSummary: () => request<any>('/dispatch/summary'),
+  getDispatchScores: (date?: string) => request<any[]>(`/dispatch/scores${date ? `?date=${date}` : ''}`),
+  getDispatchSettings: () => request<any>('/dispatch/settings'),
+  updateDispatchSettings: (data: any) => request<any>('/dispatch/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getDriverZones: (driverId?: string) => request<any[]>(`/dispatch/driver-zones${driverId ? `?driverId=${driverId}` : ''}`),
+  assignDriverZones: (driverId: string, zones: { zone: string; isPrimary?: boolean }[]) =>
+    request<any>('/dispatch/driver-zones', { method: 'POST', body: JSON.stringify({ driverId, zones }) }),
+  generateDispatchBatch: (data: { dispatchDate: string; zones?: string[]; minScore?: number }) =>
+    request<any>('/dispatch/generate', { method: 'POST', body: JSON.stringify(data) }),
+  getDispatchBatches: (limit?: number) => request<any[]>(`/dispatch/batches${limit ? `?limit=${limit}` : ''}`),
+  getDispatchBatch: (id: string) => request<any>(`/dispatch/batches/${id}`),
+  updateDispatchItem: (batchId: string, itemId: string, data: { selected?: boolean; assignedDriverId?: string }) =>
+    request<any>(`/dispatch/batches/${batchId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  approveDispatchBatch: (id: string) => request<any>(`/dispatch/batches/${id}/approve`, { method: 'POST' }),
+  cancelDispatchBatch: (id: string) => request<any>(`/dispatch/batches/${id}/cancel`, { method: 'POST' }),
+
+  // Habit-learning: manual-first suggestions, never auto-selects
+  getDispatchSuggestions: (date?: string) =>
+    request<any[]>(`/dispatch/suggestions${date ? `?date=${date}` : ''}`),
+  getDispatchAffinity: () => request<Record<string, { affinityScore: number; pickCount: number }>>('/dispatch/affinity'),
+  recordDispatchSelections: (items: Array<{
+    customerId: string;
+    batchId?: string;
+    urgencyScore: number;
+    selected: boolean;
+    zone?: string;
+  }>) => request<{ recorded: number }>('/dispatch/selections', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  }),
 };

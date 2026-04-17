@@ -19,6 +19,7 @@ import analyticsRoutes from './routes/analytics.routes';
 import dexRoutes from './routes/dex.routes';
 import customerRoutes from './routes/customer.routes';
 import productRoutes from './routes/product.routes';
+import autoDispatchRoutes from './routes/autodispatch.routes';
 
 // Background jobs
 import { startQBOSyncJob, startInsightsJob, startDriverPerformanceJob } from './jobs/qbo-sync.job';
@@ -56,6 +57,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/dex', dexRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/dispatch', autoDispatchRoutes);
 
 // Error handler
 app.use(errorHandler);

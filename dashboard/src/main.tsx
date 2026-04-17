@@ -15,6 +15,7 @@ import CreditsPage from './pages/CreditsPage';
 import QBOPage from './pages/QBOPage';
 import InvoicesPage from './pages/InvoicesPage';
 import RoutesPage from './pages/RoutesPage';
+import AutoDispatchPage from './pages/AutoDispatchPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />;
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route index element={<DashboardPage />} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
+            <Route path="dispatch" element={<AutoDispatchPage />} />
             <Route path="drivers" element={<DriversPage />} />
             <Route path="routes" element={<RoutesPage />} />
             <Route path="inventory" element={<InventoryPage />} />

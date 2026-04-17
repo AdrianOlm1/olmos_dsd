@@ -1,0 +1,378 @@
+================================================================================
+ FULFILLMENT STREAMLINING PLAN
+ Research + Feature Plan + Schema + Integration Design
+ Date: 2026-04-17
+ Author: Claude (10x Software Eng. mode)
+================================================================================
+
+OBJECTIVE
+---------
+Turn the current DSD-specific auto-dispatch tool into a fast, manual-first,
+learning-capable, industry-agnostic fulfillment console. Four explicit goals
+from the user:
+
+  (1) Don't overload the user. Minimize clicks to select fulfillments.
+  (2) Make driver-to-zone selection easy (it's currently clunky/missing).
+  (3) DON'T auto-select for the user. Let them pick manually, then LEARN
+      from their habits (ML / heuristics).
+  (4) Generalize the app so any company (not just DSD) can use it.
+
+
+================================================================================
+ PART 1 — RESEARCH SUMMARY
+================================================================================
+
+Platforms surveyed (via web research, 2026):
+  • Onfleet          — elegant UI, drag-drop, proof-of-delivery focus
+  • OptimoRoute      — rule/constraint-heavy, manual edits feel slow
+  • Route4Me         — territory + zone mgmt, manual balancing
+  • Circuit for Teams — rated highest for ease-of-use
+  • Locus / Upper    — enterprise routing w/ timeline views
+  • Dispatch Science — kanban-style drag orders → drivers
+  • Samsara / Bringg / Routific — various mid-market
+
+What users LOVE (keep these):
+  ✓ Drag-and-drop task → driver column (Onfleet, Dispatch Science)
+  ✓ Right-click zone → "Select all tasks in zone" (Onfleet)
+  ✓ Drag-from-map-marker to insert stop in route position
+  ✓ Timeline / kanban visualization of driver progress
+  ✓ Bulk action bar that slides in on multi-select
+  ✓ Command palette (Cmd+K) for power users
+  ✓ Elegant, minimal UI (Onfleet praised for this)
+  ✓ Proof-of-delivery photo + signature built-in
+
+What users HATE (avoid these):
+  ✗ OptimoRoute: manual edits feel slow, system "fights" user
+  ✗ Onfleet: hard to visualize which routes NEED adjustment
+  ✗ Route4Me: manual balancing required, UI feels dated
+  ✗ Black-box AI that auto-decides without showing reasoning
+  ✗ Forcing users to fill every field before seeing results
+  ✗ "Configuration-first" onboarding that hides the main workflow
+  ✗ Zone/territory management buried in deep settings
+
+Key UX principles distilled:
+  1. "Dispatcher becomes REVIEWER, not builder" — system suggests,
+     user approves. Never the reverse.
+  2. Bulk selection + bulk actions are essential (PatternFly, Helios DS).
+  3. Multi-select must be visible/tied to items (slide-in bar).
+  4. Direct manipulation (drag) beats form-based assignment every time.
+  5. Show WHY (score breakdown, past-selection count) next to every suggestion.
+  6. One screen to rule them all: unassigned pool → driver columns.
+
+ML/Learning approaches (user-habit learning):
+  • Memory-based collaborative filtering (lightweight KNN) — no training infra
+  • User × Customer interaction matrix, per-user selection frequency
+  • Weighted score: 0.5 * urgency + 0.3 * user-pick-history + 0.2 * recency-decay
+  • Simple, interpretable, no GPU. Upgradable to matrix factorization later.
+  • CRITICAL: suggestions are SHOWN but never auto-applied (per requirement #3).
+
+
+================================================================================
+ PART 2 — PROPOSED FEATURES
+================================================================================
+
+F1. UNIFIED KANBAN-STYLE DISPATCH BOARD  [req #1, #2]
+----
+Replace the current 4-tab layout (Overview/Scores/Zones/Batch) with ONE
+primary board:
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ [Date ▼] [Filter ▼] [⌘K]        Total: 423   Overdue: 87         │
+  ├──────────────────┬──────────────┬──────────────┬─────────────────┤
+  │ POOL (unassigned)│ Driver: Lopez│ Driver: Chen │ Driver: Smith   │
+  │ [search...]      │ Zone: B, 4   │ Zone: NY 3   │ Zone: CF2, CF3  │
+  │ ─────────────── │ ──────────── │ ──────────── │ ─────────────── │
+  │ ☐ CVS #123 92🔥 │ • CVS #042   │ • Winn Dixie │ • KeyFood #02   │
+  │ ☐ Walmart 88   │ • Walmart    │ • Publix     │ ...              │
+  │ ★ suggested     │ ...          │              │                 │
+  │ ☐ Publix 85    │              │              │                 │
+  │ ...             │              │              │                 │
+  └──────────────────┴──────────────┴──────────────┴─────────────────┘
+      ↑                   ↑ drag from pool to any driver column
+      multi-select        ↑ reorder within driver
+      with checkboxes
+
+Interactions:
+  • Click checkbox / shift-click range / Ctrl-click toggle
+  • "Select all in zone" chip above pool (zone-aware selection)
+  • Drag selected items → driver column (bulk assignment in one motion)
+  • Right-click item → "Assign to driver ▼"
+  • Floating bulk-action bar when anything selected:
+      [5 selected] [Assign ▼] [Schedule] [Clear]
+
+Click count to assign 5 stops to a driver:
+  Before: 5 clicks (one per row) + driver dropdown per row = ~15 clicks
+  After:  2 clicks (shift-click range + drop on column) = 2 clicks
+
+
+F2. INLINE DRIVER-ZONE LANES  [req #2]
+----
+Driver columns show their zone chips as a header. Click a zone chip to edit:
+
+  ┌── Driver: Lopez ──────────────┐
+  │ [B] [4] [+ add zone]          │   ← chips editable inline
+  │ ────────────────────────────  │
+  │ • CVS #042  ...               │
+
+No more settings tab diving. Zone assignment = chip UI next to the driver.
+Drag a zone chip from one driver to another to REASSIGN it directly.
+
+
+F3. MANUAL-FIRST WITH "SUGGESTED" MARKERS  [req #3]
+----
+System NEVER pre-selects anything. Instead, it tags items with markers:
+
+  ★  "You usually pick these" (history-based suggestion)
+  🔥  "High urgency score" (algorithmic)
+  💰  "High revenue customer"
+  📍  "In your active zone"
+
+User sees markers but MUST choose. Below the pool, a compact chip row:
+
+  Suggested for you today:  [+ CVS #123] [+ Walmart] [+ Publix]  (tap to add)
+
+Click a chip → that item gets added to selection. Nothing auto-selected.
+Every suggestion has a "why?" tooltip showing score breakdown + past picks.
+
+
+F4. HABIT LEARNING (lightweight CF)  [req #3]
+----
+Every time a user confirms a batch, we log:
+  - (userId, customerId, urgencyScore, selected: bool, dayOfWeek, timestamp)
+
+On next load:
+  - Compute per-user customer-pick frequency
+  - Compute day-of-week pick patterns (Mondays: chain stores, Fri: indies)
+  - Blend into suggestion ranking:
+      suggestionScore =
+        0.5 * urgencyScore +
+        0.3 * userPickFrequency(normalized) +
+        0.2 * dayOfWeekAffinity
+
+No ML infra required. Runs in Postgres as aggregate queries. Interpretable.
+Upgrade path: export interaction matrix → train matrix factorization offline.
+
+
+F5. INDUSTRY-AGNOSTIC GENERALIZATION  [req #4]
+----
+Current schema is DSD-specific (Customer, Invoice, Delivery, DSD route).
+Abstract into generic concepts with per-org template:
+
+  Org Template       Customer →      Fulfillment Item →    Driver →
+  ─────────────     ─────────────    ───────────────────    ─────────
+  DSD (current)      Store           Restock order         Route driver
+  Courier            Recipient       Package                Courier
+  Field Service      Client          Service job            Technician
+  HVAC/Plumbing      Property        Work order             Tech
+  Food delivery      Customer        Meal order             Driver
+  Medical supply     Patient/Clinic  Supply order           Courier
+
+Add Organization.industryTemplate (enum) + terminology JSON override.
+UI reads terminology from the template:
+  { "serviceLocation": "Patient", "fulfillmentItem": "Supply Order",
+    "driver": "Technician", "zone": "Territory" }
+
+
+================================================================================
+ PART 3 — SCHEMA CHANGES (Prisma)
+================================================================================
+
+NEW TABLES
+----------
+
+model Organization {
+  id                String   @id @default(cuid())
+  name              String
+  industryTemplate  IndustryTemplate @default(DSD)
+  terminology       Json?    // { "customer": "Patient", ... }
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  users             User[]
+  customers         Customer[]
+  @@index([industryTemplate])
+}
+
+enum IndustryTemplate {
+  DSD
+  COURIER
+  FIELD_SERVICE
+  HVAC
+  FOOD_DELIVERY
+  MEDICAL_SUPPLY
+  GENERIC
+}
+
+model DispatchSelectionEvent {
+  id               String   @id @default(cuid())
+  userId           String
+  customerId       String
+  batchId          String?
+  urgencyScore     Int
+  selected         Boolean  // true = user picked, false = user skipped
+  dayOfWeek        Int      // 0-6
+  zone             String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id])
+  customer         Customer @relation(fields: [customerId], references: [id])
+  @@index([userId, customerId])
+  @@index([userId, dayOfWeek])
+  @@index([createdAt])
+}
+
+model UserCustomerAffinity {
+  id               String   @id @default(cuid())
+  userId           String
+  customerId       String
+  pickCount        Int      @default(0)
+  skipCount        Int      @default(0)
+  lastPickedAt     DateTime?
+  affinityScore    Float    @default(0) // computed 0..1
+  user             User     @relation(fields: [userId], references: [id])
+  customer         Customer @relation(fields: [customerId], references: [id])
+  @@unique([userId, customerId])
+  @@index([userId, affinityScore])
+}
+
+MODIFIED TABLES
+---------------
+
+User              + organizationId (FK, optional for backward compat)
+                  + selectionEvents, affinities (back-relations)
+
+Customer          + organizationId (FK, optional)
+                  + selectionEvents, affinities (back-relations)
+
+AutoDispatchSettings  + preselectByDefault Boolean @default(false)
+                      // NEW: controls whether suggestions are auto-checked
+                      // MUST default to false per requirement #3
+
+
+================================================================================
+ PART 4 — BACKEND CHANGES
+================================================================================
+
+NEW ENDPOINTS (backend/src/routes/autodispatch.routes.ts):
+
+  GET  /autodispatch/suggestions?userId=...&date=...
+       → returns CustomerScore[] with added:
+          { suggestionScore, userPickCount, reasonTags: ['★','🔥','💰'] }
+       → sorted by suggestionScore but NONE marked selected
+
+  POST /autodispatch/selections
+       body: { userId, items: [{ customerId, selected, urgencyScore, zone }] }
+       → Records DispatchSelectionEvent rows (batch upsert)
+       → Updates UserCustomerAffinity aggregates asynchronously
+
+  GET  /autodispatch/affinity/:userId
+       → returns { customerId → affinityScore } map for UI badges
+
+  PATCH /autodispatch/drivers/:driverId/zones
+       body: { zones: [{ zone, isPrimary }] }
+       → Already exists — reused for inline zone lane editor
+
+SERVICE METHODS (backend/src/services/autodispatch.service.ts):
+
+  recordSelections(userId, items) → writes events, updates affinities
+  scoreCustomersWithAffinity(userId, date) → blended suggestion score
+  getAffinityMap(userId) → Map<customerId, number>
+
+
+================================================================================
+ PART 5 — FRONTEND CHANGES
+================================================================================
+
+Dashboard structure:
+  dashboard/src/pages/AutoDispatchPage.tsx  (REWRITE)
+    - Remove 4-tab layout. Replace with Kanban board as default view.
+    - Keep a slim "Settings" drawer for threshold/weights tuning.
+
+  dashboard/src/components/dispatch/
+    - DispatchBoard.tsx       (kanban container)
+    - UnassignedPool.tsx      (searchable left column with checkbox list)
+    - DriverLane.tsx          (per-driver column w/ editable zone chips)
+    - SuggestionChips.tsx     (horizontal chips above pool)
+    - BulkActionBar.tsx       (slide-in bar when items selected)
+    - CommandPalette.tsx      (Cmd+K fuzzy search)
+    - ReasonTag.tsx           (★/🔥/💰/📍 markers w/ tooltip)
+
+Drag-and-drop library:
+  Use @hello-pangea/dnd (modern fork of react-beautiful-dnd) — matches the
+  pattern Onfleet/Dispatch Science use.
+
+Critical UX rules in code:
+  - NEVER set `selected: true` on load. Default all items to unchecked.
+  - The previous `batch.items.selected = urgencyScore >= threshold` logic
+    must be REMOVED from generateBatch().
+  - Show suggestion MARKERS but require explicit user action.
+
+
+================================================================================
+ PART 6 — INTEGRATION: HOW IT ALL FITS
+================================================================================
+
+Data flow for a typical session:
+
+  1. User opens /auto-dispatch
+  2. Frontend fetches:
+       GET /autodispatch/summary        (counts, zones, drivers)
+       GET /autodispatch/suggestions    (scored + affinity-weighted list)
+       GET /autodispatch/affinity/:me   (for star badges)
+  3. Board renders:
+       - Pool with unchecked items, sorted by suggestionScore
+       - Driver columns empty or showing prior batch
+       - Suggestion chip row across top
+  4. User interacts:
+       - Shift-clicks a range → 12 selected → bulk bar slides in
+       - Drags to "Driver: Lopez" column → items move, assigned
+       - Adds zone "B" to Lopez by typing in his chip bar
+  5. User clicks "Dispatch":
+       POST /autodispatch/batch         (creates real batch)
+       POST /autodispatch/selections    (records for ML learning)
+  6. Next session:
+       - GET /autodispatch/suggestions returns CVS, Walmart, Publix first
+         because user picked them 8/10 times last week
+       - Those items now carry ★ badge and appear in top chips
+
+Multi-industry switch:
+  1. Admin sets Organization.industryTemplate = "HVAC"
+  2. Frontend reads terminology → UI labels update ("Customer" → "Property")
+  3. Scoring weights exposed in settings for org to tune per industry
+     (HVAC emphasizes SLA breach > revenue; DSD emphasizes consumption)
+
+Backward compatibility:
+  - All new columns are nullable/optional with sensible defaults.
+  - Existing batches work; selections.selected remains the source of truth.
+  - If UserCustomerAffinity is empty (new user), suggestionScore ≡ urgencyScore.
+  - preselectByDefault=false for all existing orgs (manual-first).
+
+
+================================================================================
+ PART 7 — IMPLEMENTATION ORDER (ship-oriented)
+================================================================================
+
+Phase 1 (this session) — UX overhaul, manual-first:
+  ✓ Write FULFILLMENT_STREAMLINE_PLAN.txt (THIS FILE)
+  [ ] Add preselectByDefault setting (default false). Stop auto-selecting.
+  [ ] Inline driver-zone chip editor (move out of settings tab).
+  [ ] Kanban board view as new default (keep tabs as fallback for now).
+  [ ] Bulk-action bar + multi-select in pool.
+  [ ] Backend: recordSelections endpoint + DispatchSelectionEvent table.
+
+Phase 2 — Habit learning:
+  [ ] UserCustomerAffinity table + aggregation job.
+  [ ] scoreCustomersWithAffinity() service method.
+  [ ] Suggestion chips w/ ★ badges.
+
+Phase 3 — Generalization:
+  [ ] Organization + IndustryTemplate schema.
+  [ ] Terminology JSON resolver hook in UI.
+  [ ] Industry preset configs.
+
+Phase 4 — Polish:
+  [ ] Cmd+K command palette.
+  [ ] Drag-from-map to route position.
+  [ ] Timeline view for in-progress batches.
+
+================================================================================
+ END OF PLAN
+================================================================================

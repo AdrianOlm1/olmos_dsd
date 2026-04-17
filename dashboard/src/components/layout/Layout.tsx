@@ -4,7 +4,7 @@ import { clearToken } from '../../services/api';
 import {
   LayoutDashboard, Users, Truck, Package, RotateCcw,
   BookOpen, FileText, Map, Settings, LogOut, Menu, X,
-  Bell, Search, ChevronDown, Zap,
+  Bell, Search, ChevronDown, Zap, Send,
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -15,8 +15,9 @@ const NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { path: '/routes',  label: 'Routes',  icon: Map },
-      { path: '/drivers', label: 'Drivers', icon: Truck },
+      { path: '/dispatch', label: 'Auto-Dispatch', icon: Send },
+      { path: '/routes',   label: 'Routes',        icon: Map },
+      { path: '/drivers',  label: 'Drivers',       icon: Truck },
     ],
   },
   {
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
 
 const ROUTE_LABELS: Record<string, string> = {
   '/':           'Dashboard',
+  '/dispatch':   'Auto-Dispatch',
   '/routes':     'Routes',
   '/drivers':    'Drivers',
   '/customers':  'Customers',

@@ -1,7 +1,66 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(pool),
+});
+
+function demoDateDaysAgo(ref: Date, days: number): Date {
+  const d = new Date(ref);
+  d.setDate(d.getDate() - days);
+  d.setHours(14, 30, 0, 0);
+  return d;
+}
+
+/** Delivered invoices with payment so auto-dispatch scoring has real history (ice cream + staples). */
+async function seedDeliveredInvoice(
+  invoiceNumber: string,
+  customerId: string,
+  locationId: string,
+  driverId: string,
+  deliveredAt: Date,
+  lines: { productId: string; quantity: number; unitPrice: number }[],
+) {
+  const subtotal = Math.round(lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0) * 100) / 100;
+  const total = subtotal;
+  await prisma.invoice.upsert({
+    where: { invoiceNumber },
+    update: {
+      deliveredAt,
+      createdAt: deliveredAt,
+    },
+    create: {
+      invoiceNumber,
+      customerId,
+      locationId,
+      driverId,
+      status: 'DELIVERED',
+      subtotal,
+      taxAmount: 0,
+      totalAmount: total,
+      balanceDue: 0,
+      amountPaid: total,
+      deliveredAt,
+      createdAt: deliveredAt,
+      lines: {
+        create: lines.map((l) => ({
+          productId: l.productId,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          discount: 0,
+          lineTotal: Math.round(l.quantity * l.unitPrice * 100) / 100,
+        })),
+      },
+      payments: {
+        create: { amount: total, method: 'CASH' },
+      },
+    },
+  });
+}
 
 async function main() {
   console.log('Seeding database...');
@@ -123,6 +182,11 @@ async function main() {
     prisma.product.upsert({ where: { sku: 'DRY-002' }, update: {}, create: { sku: 'DRY-002', upc: '012345678908', name: 'Greek Yogurt 32oz', categoryId: dairy.id, basePrice: 5.99, costPrice: 3.50, perishable: true, lotTracked: true } }),
     prisma.product.upsert({ where: { sku: 'FRZ-001' }, update: {}, create: { sku: 'FRZ-001', upc: '012345678909', name: 'Frozen Pizza 12in', categoryId: frozen.id, basePrice: 7.99, costPrice: 4.00, perishable: true } }),
     prisma.product.upsert({ where: { sku: 'FRZ-002' }, update: {}, create: { sku: 'FRZ-002', upc: '012345678910', name: 'Ice Cream Vanilla 1pt', categoryId: frozen.id, basePrice: 4.49, costPrice: 2.25, perishable: true } }),
+    // Ice cream route-DSD demo SKUs (from route / auto-dispatch use case)
+    prisma.product.upsert({ where: { sku: 'ICE-001' }, update: {}, create: { sku: 'ICE-001', upc: '088012340001', name: 'Ice Cream 3gal Tub Chocolate', categoryId: frozen.id, basePrice: 48.99, costPrice: 28.00, unitOfMeasure: 'CASE', unitsPerCase: 1, perishable: true, lotTracked: true } }),
+    prisma.product.upsert({ where: { sku: 'ICE-002' }, update: {}, create: { sku: 'ICE-002', upc: '088012340002', name: 'Ice Cream 3gal Tub Vanilla', categoryId: frozen.id, basePrice: 48.99, costPrice: 28.00, unitOfMeasure: 'CASE', unitsPerCase: 1, perishable: true, lotTracked: true } }),
+    prisma.product.upsert({ where: { sku: 'ICE-003' }, update: {}, create: { sku: 'ICE-003', upc: '088012340003', name: 'Novelty Ice Cream Bars 24ct', categoryId: frozen.id, basePrice: 32.50, costPrice: 18.25, unitOfMeasure: 'CASE', unitsPerCase: 24, perishable: true } }),
+    prisma.product.upsert({ where: { sku: 'ICE-004' }, update: {}, create: { sku: 'ICE-004', upc: '088012340004', name: 'Ice Cream Sandwiches 30ct', categoryId: frozen.id, basePrice: 36.00, costPrice: 20.00, unitOfMeasure: 'CASE', unitsPerCase: 30, perishable: true } }),
   ]);
 
   // ─── Customers ──────────────────────────────────────────────
@@ -133,6 +197,7 @@ async function main() {
       create: {
         name: 'Kroger #1234 - Downtown',
         accountNumber: 'KRG-001',
+        notes: 'Zone: A',
         contactName: 'John Smith',
         email: 'store1234@kroger.com',
         phone: '555-0101',
@@ -160,6 +225,7 @@ async function main() {
       create: {
         name: 'Publix #567 - Coral Gables',
         accountNumber: 'PBX-001',
+        notes: 'Zone: B',
         contactName: 'Maria Garcia',
         email: 'store567@publix.com',
         phone: '555-0102',
@@ -187,6 +253,7 @@ async function main() {
       create: {
         name: 'Albertsons #890 - Kendall',
         accountNumber: 'ALB-001',
+        notes: 'Zone: NY 4',
         contactName: 'Carlos Rodriguez',
         phone: '555-0103',
         chainId: albertsons.id,
@@ -213,6 +280,7 @@ async function main() {
       create: {
         name: "Joe's Corner Market",
         accountNumber: 'IND-001',
+        notes: 'Zone: 6A',
         contactName: 'Joe Martinez',
         phone: '555-0104',
         chainId: independent.id,
@@ -238,6 +306,7 @@ async function main() {
       create: {
         name: 'Fresh & Quick Bodega',
         accountNumber: 'IND-002',
+        notes: 'Zone: CF2',
         contactName: 'Ana Torres',
         phone: '555-0105',
         chainId: independent.id,
@@ -325,8 +394,138 @@ async function main() {
     },
   });
 
+  // ─── Driver zones (matches `Zone: …` in customer notes for auto-dispatch) ───
+  const mikeDriverId = driverUser.driver?.id;
+  const sarahDriverId = driver2User.driver?.id;
+  if (!mikeDriverId || !sarahDriverId) throw new Error('Seed requires driver profiles for Mike and Sarah');
+
+  await prisma.driverZone.deleteMany({
+    where: { driverId: { in: [mikeDriverId, sarahDriverId] } },
+  });
+  await prisma.driverZone.createMany({
+    data: [
+      { driverId: mikeDriverId, zone: 'A', isPrimary: true },
+      { driverId: mikeDriverId, zone: 'NY 4', isPrimary: false },
+      { driverId: sarahDriverId, zone: 'B', isPrimary: true },
+      { driverId: sarahDriverId, zone: '6A', isPrimary: false },
+      { driverId: sarahDriverId, zone: 'CF2', isPrimary: false },
+    ],
+  });
+
+  // ─── Demo route / ice-cream invoice history (zones + visit spacing for scoring) ───
+  const p = (sku: string) => {
+    const pr = products.find((x) => x.sku === sku);
+    if (!pr) throw new Error(`Missing product ${sku}`);
+    return pr;
+  };
+
+  const ref = new Date();
+  ref.setHours(12, 0, 0, 0);
+
+  const routed = await prisma.customer.findMany({
+    where: { accountNumber: { in: ['KRG-001', 'PBX-001', 'ALB-001', 'IND-001', 'IND-002'] } },
+    include: { locations: { where: { isActive: true }, take: 1 } },
+  });
+  const loc = (accountNumber: string) => {
+    const c = routed.find((x) => x.accountNumber === accountNumber);
+    const lid = c?.locations[0]?.id;
+    if (!c || !lid) throw new Error(`Missing location for ${accountNumber}`);
+    return { customerId: c.id, locationId: lid };
+  };
+
+  const krg = loc('KRG-001');
+  await seedDeliveredInvoice('DEMO-KRG-2025a', krg.customerId, krg.locationId, mikeDriverId, demoDateDaysAgo(ref, 52), [
+    { productId: p('ICE-001').id, quantity: 4, unitPrice: 48.99 },
+    { productId: p('BEV-001').id, quantity: 10, unitPrice: 4.99 },
+  ]);
+  await seedDeliveredInvoice('DEMO-KRG-2025b', krg.customerId, krg.locationId, mikeDriverId, demoDateDaysAgo(ref, 28), [
+    { productId: p('ICE-002').id, quantity: 6, unitPrice: 48.99 },
+    { productId: p('ICE-003').id, quantity: 3, unitPrice: 32.5 },
+  ]);
+  await seedDeliveredInvoice('DEMO-KRG-2025c', krg.customerId, krg.locationId, sarahDriverId, demoDateDaysAgo(ref, 7), [
+    { productId: p('ICE-001').id, quantity: 12, unitPrice: 48.99 },
+    { productId: p('ICE-004').id, quantity: 5, unitPrice: 36.0 },
+  ]);
+
+  const pbx = loc('PBX-001');
+  await seedDeliveredInvoice('DEMO-PBX-2025a', pbx.customerId, pbx.locationId, sarahDriverId, demoDateDaysAgo(ref, 58), [
+    { productId: p('ICE-002').id, quantity: 5, unitPrice: 48.99 },
+  ]);
+  await seedDeliveredInvoice('DEMO-PBX-2025b', pbx.customerId, pbx.locationId, sarahDriverId, demoDateDaysAgo(ref, 31), [
+    { productId: p('ICE-003').id, quantity: 8, unitPrice: 32.5 },
+    { productId: p('SNK-001').id, quantity: 12, unitPrice: 3.49 },
+  ]);
+  await seedDeliveredInvoice('DEMO-PBX-2025c', pbx.customerId, pbx.locationId, mikeDriverId, demoDateDaysAgo(ref, 9), [
+    { productId: p('ICE-001').id, quantity: 10, unitPrice: 48.99 },
+  ]);
+
+  const alb = loc('ALB-001');
+  await seedDeliveredInvoice('DEMO-ALB-2025a', alb.customerId, alb.locationId, mikeDriverId, demoDateDaysAgo(ref, 102), [
+    { productId: p('ICE-002').id, quantity: 7, unitPrice: 48.99 },
+  ]);
+  await seedDeliveredInvoice('DEMO-ALB-2025b', alb.customerId, alb.locationId, mikeDriverId, demoDateDaysAgo(ref, 48), [
+    { productId: p('ICE-001').id, quantity: 9, unitPrice: 48.99 },
+    { productId: p('ICE-004').id, quantity: 6, unitPrice: 36.0 },
+  ]);
+
+  const ind1 = loc('IND-001');
+  await seedDeliveredInvoice('DEMO-IND1-2025a', ind1.customerId, ind1.locationId, sarahDriverId, demoDateDaysAgo(ref, 41), [
+    { productId: p('ICE-003').id, quantity: 6, unitPrice: 32.5 },
+  ]);
+  await seedDeliveredInvoice('DEMO-IND1-2025b', ind1.customerId, ind1.locationId, sarahDriverId, demoDateDaysAgo(ref, 19), [
+    { productId: p('ICE-001').id, quantity: 4, unitPrice: 48.99 },
+  ]);
+  await seedDeliveredInvoice('DEMO-IND1-2025c', ind1.customerId, ind1.locationId, mikeDriverId, demoDateDaysAgo(ref, 4), [
+    { productId: p('ICE-002').id, quantity: 14, unitPrice: 48.99 },
+    { productId: p('ICE-004').id, quantity: 4, unitPrice: 36.0 },
+  ]);
+
+  const ind2 = loc('IND-002');
+  await seedDeliveredInvoice('DEMO-IND2-2025a', ind2.customerId, ind2.locationId, sarahDriverId, demoDateDaysAgo(ref, 118), [
+    { productId: p('ICE-001').id, quantity: 3, unitPrice: 48.99 },
+  ]);
+  await seedDeliveredInvoice('DEMO-IND2-2025b', ind2.customerId, ind2.locationId, mikeDriverId, demoDateDaysAgo(ref, 68), [
+    { productId: p('ICE-002').id, quantity: 5, unitPrice: 48.99 },
+    { productId: p('ICE-003').id, quantity: 4, unitPrice: 32.5 },
+  ]);
+
+  // Optional insights row for dashboards
+  for (const c of routed) {
+    const invs = await prisma.invoice.findMany({
+      where: { customerId: c.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    const total = invs.reduce((s, i) => s + Number(i.totalAmount), 0);
+    await prisma.customerInsight.upsert({
+      where: { customerId: c.id },
+      update: {
+        orderCount: invs.length,
+        totalLifetimeValue: total,
+        lastOrderDate: invs[0]?.createdAt ?? null,
+        avgOrderValue: invs.length ? total / invs.length : 0,
+        avgOrderFrequencyDays: 28,
+      },
+      create: {
+        customerId: c.id,
+        orderCount: invs.length,
+        totalLifetimeValue: total,
+        lastOrderDate: invs[0]?.createdAt ?? null,
+        avgOrderValue: invs.length ? total / invs.length : 0,
+        avgOrderFrequencyDays: 28,
+        churnRisk: 0.15,
+      },
+    });
+  }
+
+  const demoInvoiceCount = await prisma.invoice.count({
+    where: { invoiceNumber: { startsWith: 'DEMO-' } },
+  });
+
   console.log('Seed complete!');
   console.log(`Created ${products.length} products, ${customers.length} customers, 4 chains, 2 promotions`);
+  console.log(
+    `Demo route data: ICE-* products, zones (A, B, NY 4, 6A, CF2), driver–zone assignments, ${demoInvoiceCount} DEMO-* delivered invoices for auto-dispatch.`,
+  );
   console.log('Login credentials: admin@olmosdsd.com / password123, driver@olmosdsd.com / password123');
 }
 
@@ -337,4 +536,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });

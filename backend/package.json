@@ -12,7 +12,8 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/adapter-pg": "^7.6.0",
+    "@prisma/client": "^7.6.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
@@ -25,6 +26,7 @@
     "node-cron": "^3.0.3",
     "node-quickbooks": "^2.0.39",
     "pdfkit": "^0.15.1",
+    "pg": "^8.20.0",
     "uuid": "^10.0.0",
     "winston": "^3.15.0",
     "zod": "^3.23.8"
@@ -37,7 +39,7 @@
     "@types/node": "^22.9.0",
     "@types/node-cron": "^3.0.11",
     "@types/uuid": "^10.0.0",
-    "prisma": "^5.22.0",
+    "prisma": "^7.6.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

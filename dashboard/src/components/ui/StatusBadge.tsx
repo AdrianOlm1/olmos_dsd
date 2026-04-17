@@ -19,6 +19,13 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   // Stop statuses
   NO_SERVICE:        { label: 'No Service',       cls: 'badge-danger' },
   SKIPPED:           { label: 'Skipped',          cls: 'badge-warning' },
+  // Dispatch-only statuses (DRAFT, COMPLETED etc. shared with invoice)
+  PENDING_APPROVAL:  { label: 'Pending Approval', cls: 'badge-warning' },
+  DISPATCHED:        { label: 'Dispatched',       cls: 'badge-success' },
+  CANCELLED:         { label: 'Cancelled',        cls: 'badge-neutral' },
+  OVERDUE:           { label: 'Overdue',          cls: 'badge-danger' },
+  DUE_SOON:          { label: 'Due Soon',         cls: 'badge-warning' },
+  UPCOMING:          { label: 'Upcoming',         cls: 'badge-primary' },
   // Misc
   ACTIVE:            { label: 'Active',           cls: 'badge-success' },
   INACTIVE:          { label: 'Inactive',         cls: 'badge-neutral' },
